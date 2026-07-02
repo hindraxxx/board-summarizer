@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Jira Sprint Summarizer</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Jira Summary</h1>
+        <button id="copy" type="button" disabled>Copy</button>
+      </header>
+
+      <label>
+        Site URL
+        <input id="siteUrl" type="url" placeholder="https://gofin.atlassian.net">
+      </label>
+
+      <label>
+        Board IDs
+        <input id="boardIds" type="text" inputmode="numeric" placeholder="194,374">
+      </label>
+
+      <button id="run" type="button">Summarize</button>
+      <p id="status" role="status"></p>
+      <textarea id="output" spellcheck="false" placeholder="Summary appears here"></textarea>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

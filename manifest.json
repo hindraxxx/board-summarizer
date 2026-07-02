@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Jira Sprint Summarizer",
+  "version": "0.1.0",
+  "description": "Summarize Jira board/current sprint issues and latest comments using your logged-in Jira session.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["https://*.atlassian.net/*"],
+  "action": {
+    "default_title": "Jira Sprint Summarizer",
+    "default_popup": "popup.html"
+  }
+}
