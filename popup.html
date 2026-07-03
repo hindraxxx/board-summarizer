@@ -10,7 +10,10 @@
     <main>
       <header>
         <h1>Jira Summary</h1>
-        <button id="copy" type="button" disabled>Copy</button>
+        <div class="actions">
+          <button id="copyDebug" type="button" disabled>Copy Debug</button>
+          <button id="copy" type="button" disabled>Copy</button>
+        </div>
       </header>
 
       <label>
@@ -26,6 +29,7 @@
       <button id="run" type="button">Summarize</button>
       <p id="status" role="status"></p>
       <textarea id="output" spellcheck="false" placeholder="Summary appears here"></textarea>
+      <textarea id="debugLog" spellcheck="false" placeholder="Debug log appears here" readonly></textarea>
     </main>
     <script src="popup.js"></script>
   </body>

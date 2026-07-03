@@ -2,8 +2,13 @@ const siteUrlInput = document.querySelector("#siteUrl");
 const boardIdsInput = document.querySelector("#boardIds");
 const runButton = document.querySelector("#run");
 const copyButton = document.querySelector("#copy");
+const copyDebugButton = document.querySelector("#copyDebug");
 const statusEl = document.querySelector("#status");
 const outputEl = document.querySelector("#output");
+const debugLogEl = document.querySelector("#debugLog");
+
+const SPRINT_FIELD_ID = "customfield_10020";
+const OPEN_SPRINT_JQL = "cf[10020] in openSprints()";
 
 const JIRA_FIELDS = [
   "summary",
@@ -13,7 +18,8 @@ const JIRA_FIELDS = [
   "issuetype",
   "updated",
   "description",
-  "parent"
+  "parent",
+  SPRINT_FIELD_ID
 ].join(",");
 
 let epicFieldIds = null;
@@ -40,36 +46,60 @@ runButton.addEventListener("click", async () => {
   localStorage.setItem("boardIds", boardIds.join(","));
 
   outputEl.value = "";
+  debugLogEl.value = "";
   copyButton.disabled = true;
+  copyDebugButton.disabled = true;
   setBusy(true, "Fetching current sprint Jira data...");
 
+  let debug = [];
   try {
+    debug = createDebugLog(siteUrl, boardIds);
     const issuesByKey = new Map();
     for (const boardId of boardIds) {
       statusEl.textContent = `Fetching active sprint for board ${boardId}...`;
-      const activeIssues = await fetchCurrentSprintIssues(siteUrl, boardId);
+      const activeIssues = await fetchCurrentSprintIssues(siteUrl, boardId, debug);
       for (const issue of activeIssues) {
+        if (isDoneIssue(issue)) {
+          debugIssue(debug, "skip-done", issue);
+          continue;
+        }
+        debugIssue(debug, "include-candidate", issue);
         issuesByKey.set(issue.key, issue);
       }
     }
 
     const issues = [...issuesByKey.values()];
+    debug.push("");
+    debug.push(`Unique issues selected for comment fetch: ${issues.length}`);
+    debug.push(`Selected keys: ${issues.map((issue) => issue.key).join(", ") || "(none)"}`);
 
     const rows = [];
     for (let index = 0; index < issues.length; index += 1) {
       const issue = issues[index];
       statusEl.textContent = `Fetching comments ${index + 1}/${issues.length}: ${issue.key}`;
       const comments = await fetchAll(`${siteUrl}/rest/api/3/issue/${issue.key}/comment`, "comments");
+      debugIssue(debug, `comment-fetch ${index + 1}/${issues.length}`, issue, {
+        commentCount: comments.length,
+        latestCommentCreated: latestComment(comments)?.created || ""
+      });
       rows.push(await toSummaryRow(issue, latestComment(comments), siteUrl));
     }
 
     const rowsWithComments = rows.filter((row) => row.latestText);
     outputEl.value = toMarkdown(rowsWithComments);
+    debug.push("");
+    debug.push(`Rows with comments in summary: ${rowsWithComments.length}/${rows.length}`);
+    debugLogEl.value = debug.join("\n");
     copyButton.disabled = rowsWithComments.length === 0;
+    copyDebugButton.disabled = debugLogEl.value.length === 0;
     statusEl.textContent = `Done. ${rowsWithComments.length}/${rows.length} issues had a comment.`;
   } catch (error) {
     statusEl.textContent = "Failed.";
     outputEl.value = String(error?.message || error);
+    debug.push("");
+    debug.push(`ERROR: ${String(error?.message || error)}`);
+    debugLogEl.value = debug.join("\n");
+    copyDebugButton.disabled = debugLogEl.value.length === 0;
   } finally {
     setBusy(false);
   }
@@ -80,18 +110,90 @@ copyButton.addEventListener("click", async () => {
   statusEl.textContent = "Copied.";
 });
 
-async function fetchCurrentSprintIssues(siteUrl, boardId) {
+copyDebugButton.addEventListener("click", async () => {
+  await navigator.clipboard.writeText(debugLogEl.value);
+  statusEl.textContent = "Copied debug log.";
+});
+
+async function fetchCurrentSprintIssues(siteUrl, boardId, debug) {
   const sprintUrl = `${siteUrl}/rest/agile/1.0/board/${boardId}/sprint?state=active`;
   const sprints = await fetchAll(sprintUrl, "values");
+  debug.push("");
+  debug.push(`Board ${boardId}: active sprint lookup`);
+  debug.push(`Sprint URL: ${sprintUrl}`);
+  debug.push(`Active sprints (${sprints.length}): ${sprints.map(formatSprint).join(" | ") || "(none)"}`);
   if (sprints.length === 0) return [];
 
   const byKey = new Map();
   for (const sprint of sprints) {
-    const issueUrl = `${siteUrl}/rest/agile/1.0/sprint/${sprint.id}/issue?fields=${encodeURIComponent(JIRA_FIELDS)}&jql=${encodeURIComponent("Sprint in openSprints()")}`;
+    const issueUrl = `${siteUrl}/rest/agile/1.0/sprint/${sprint.id}/issue?fields=${encodeURIComponent(JIRA_FIELDS)}&jql=${encodeURIComponent(OPEN_SPRINT_JQL)}`;
+    debug.push("");
+    debug.push(`Board ${boardId}: fetching issues for ${formatSprint(sprint)}`);
+    debug.push(`Issue URL: ${issueUrl}`);
     const issues = await fetchAll(issueUrl, "issues");
-    for (const issue of issues) byKey.set(issue.key, issue);
+    debug.push(`Fetched ${issues.length} issues for sprint ${sprint.id}: ${issues.map((issue) => issue.key).join(", ") || "(none)"}`);
+    for (const issue of issues) {
+      debugIssue(debug, `sprint ${sprint.id}`, issue);
+      byKey.set(issue.key, issue);
+    }
   }
   return [...byKey.values()];
+}
+
+function createDebugLog(siteUrl, boardIds) {
+  return [
+    `Run time: ${new Date().toISOString()}`,
+    `Site URL: ${siteUrl}`,
+    `Board IDs: ${boardIds.join(", ")}`,
+    `Fields: ${JIRA_FIELDS}`,
+    `Open sprint JQL: ${OPEN_SPRINT_JQL}`
+  ];
+}
+
+function debugIssue(debug, context, issue, extra = {}) {
+  const fields = issue.fields || {};
+  const status = fields.status?.name || "";
+  const statusCategory = fields.status?.statusCategory?.name || "";
+  const sprintValues = normalizeSprintDebugValues(fields[SPRINT_FIELD_ID]);
+  const parent = fields.parent?.key || "";
+  debug.push([
+    `${context}: ${issue.key}`,
+    `summary=${fields.summary || "(empty)"}`,
+    `status=${status || "(empty)"}`,
+    `statusCategory=${statusCategory || "(empty)"}`,
+    `parent=${parent || "(empty)"}`,
+    `sprints=${sprintValues || "(empty)"}`,
+    ...Object.entries(extra).map(([key, value]) => `${key}=${value || "(empty)"}`)
+  ].join(" | "));
+}
+
+function isDoneIssue(issue) {
+  return issue.fields?.status?.statusCategory?.key === "done"
+    || issue.fields?.status?.statusCategory?.name?.toLowerCase() === "done";
+}
+
+function normalizeSprintDebugValues(value) {
+  if (!value) return "";
+  const values = Array.isArray(value) ? value : [value];
+  return values.map((item) => {
+    if (typeof item === "string") return item;
+    if (!item || typeof item !== "object") return String(item);
+    const id = item.id || "";
+    const name = item.name || "";
+    const state = item.state || "";
+    return [id && `id:${id}`, name && `name:${name}`, state && `state:${state}`].filter(Boolean).join("/");
+  }).join("; ");
+}
+
+function formatSprint(sprint) {
+  return [
+    `id=${sprint.id}`,
+    `name=${sprint.name || ""}`,
+    `state=${sprint.state || ""}`,
+    `originBoardId=${sprint.originBoardId || ""}`,
+    `start=${sprint.startDate || ""}`,
+    `end=${sprint.endDate || ""}`
+  ].join(",");
 }
 
 async function fetchAll(baseUrl, valuesKey) {

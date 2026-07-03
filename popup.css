@@ -21,6 +21,7 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 
 h1 {
@@ -64,8 +65,17 @@ button:disabled {
   opacity: 0.55;
 }
 
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
 #copy {
   background: #42526e;
+}
+
+#copyDebug {
+  background: #6554c0;
 }
 
 #status {
@@ -78,4 +88,10 @@ textarea {
   min-height: 300px;
   resize: vertical;
   white-space: pre;
+}
+
+#debugLog {
+  min-height: 180px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
 }
