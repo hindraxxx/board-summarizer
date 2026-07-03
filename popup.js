@@ -87,7 +87,7 @@ async function fetchCurrentSprintIssues(siteUrl, boardId) {
 
   const byKey = new Map();
   for (const sprint of sprints) {
-    const issueUrl = `${siteUrl}/rest/agile/1.0/sprint/${sprint.id}/issue?fields=${encodeURIComponent(JIRA_FIELDS)}`;
+    const issueUrl = `${siteUrl}/rest/agile/1.0/sprint/${sprint.id}/issue?fields=${encodeURIComponent(JIRA_FIELDS)}&jql=${encodeURIComponent("Sprint in openSprints()")}`;
     const issues = await fetchAll(issueUrl, "issues");
     for (const issue of issues) byKey.set(issue.key, issue);
   }
